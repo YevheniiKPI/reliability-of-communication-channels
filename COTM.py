@@ -17,7 +17,7 @@ from tkinter import filedialog, messagebox, ttk
 
 APP_TITLE = "COTM"
 MAX_N = 100                 # максимум вузлів у редакторі
-SLOW_N = 101                 # починаючи з цього n попереджаємо про час роботи
+SLOW_N = 5                  # починаючи з цього n попереджаємо про час роботи
 
 CLR_BG = "#f4f6f8"
 CLR_NODE = "#2d6cdf"
@@ -30,7 +30,7 @@ CLR_TEXT = "#1b2430"
 
 #  Завантаження модуля логіки
 
-def load_start_function(path=None, func_name=""):
+def load_start_function(func_name="", path=None):
     """
     Повертає (функція start, шлях до файлу) або (None, повідомлення про помилку).
     """
@@ -41,7 +41,6 @@ def load_start_function(path=None, func_name=""):
     else:
         default = os.path.join(here, "logic_module.py")
         candidates = [default] if os.path.exists(default) else []
-        # запасний варіант: шукаємо будь-який файл із "def start("
         for name in sorted(os.listdir(here)):
             full = os.path.join(here, name)
             if (name.endswith(".py")
@@ -59,8 +58,12 @@ def load_start_function(path=None, func_name=""):
             spec = importlib.util.spec_from_file_location("logic_module", full)
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
-            if hasattr(module, "optimal_algorithm"):
-                return module.optimal_algorithm, full
+            if hasattr(module, func_name):
+                # *Функція за назвою
+                if func_name == "brute_force":
+                    return module.brute_force, full
+                elif func_name == "optimal_algorithm":
+                    return module.optimal_algorithm, full
         except Exception as err:                       # noqa: BLE001
             return None, f"Не вдалося завантажити «{full}»:\n{err}"
 
@@ -192,7 +195,10 @@ class TopologyApp:
         self.root.minsize(1040, 660)
         self.root.configure(bg=CLR_BG)
 
-        self.start_func, self.logic_path = load_start_function()
+        #self.start_func, self.logic_path = load_start_function()
+        # *Початкові дані
+        self.start_func, self.logic_path = load_start_function("brute_force")
+        self.mthds_var = tk.StringVar(value="auto")
 
         self.n_var = tk.IntVar(value=5)
         self.budget_var = tk.StringVar(value="150")
@@ -211,12 +217,13 @@ class TopologyApp:
         self.rebuild_matrices()
         self.load_example(silent=True)
 
+    """
         if self.start_func is None:
             self.set_status("Модуль логіки не завантажено")
             self.root.after(300, self._logic_missing_dialog)
         else:
             self.set_status(f"Логіку завантажено з: {self.logic_path}")
-
+    """
     # ------------------------------------------------------------------
     def _build_style(self):
         style = ttk.Style()
@@ -275,6 +282,18 @@ class TopologyApp:
                    command=self.save_input).pack(side="left", padx=4)
         ttk.Button(btns, text="Приклад",
                    command=self.load_example).pack(side="left", padx=4)
+
+        # *Вибір методу
+        mthds = ttk.Frame(src)
+        mthds.pack(fill="x", pady=(8, 0))
+        ttk.Label(mthds, text="Метод").pack(side="left", padx=(0, 4))
+        ttk.Radiobutton(mthds, text="Авто", variable=self.mthds_var, 
+                    value="auto").pack(side="left", padx=4)
+        ttk.Radiobutton(mthds, text="Повний перебір", variable=self.mthds_var, 
+                    value="brute").pack(side="left", padx=4)
+        ttk.Radiobutton(mthds, text="Евристика", variable=self.mthds_var, 
+                    value="optimal").pack(side="left", padx=4)
+        
 
         editor = ttk.LabelFrame(parent, text="Параметри каналів зв'язку", padding=6)
         editor.pack(fill="both", expand=True, pady=6)
@@ -482,7 +501,7 @@ class TopologyApp:
                                         f"усі разом коштують {total:g}")
 
         warns = []
-        if n >= SLOW_N:
+        if n > SLOW_N and self.mthds_var.get() == "brute_force":
             warns.append(f"Увага: при n = {n} перебір 2^{len(edges)} варіантів "
                          f"може тривати десятки хвилин.")
         zero_p = [(i, j) for i, j in edges if prob[i][j] == 0.0]
@@ -609,6 +628,31 @@ class TopologyApp:
                     self.start_func, self.logic_path = func, info
                     self.set_status(f"Логіку завантажено з: {info}")
 
+    # *Функція зміни методу
+    def change_method(self):
+        n = int(self.n_var.get())
+        match self.mthds_var.get():
+            case "auto":
+                if n <= SLOW_N:
+                    self.start_func, self.logic_path = load_start_function("brute_force")
+                elif n > SLOW_N:
+                    self.start_func, self.logic_path = load_start_function("optimal_algorithm")
+            case "brute":
+                if n <= SLOW_N:
+                    self.start_func, self.logic_path = load_start_function("brute_force")
+                else:
+                    self.start_func, self.logic_path = load_start_function("brute_force")
+                    if n > SLOW_N and not messagebox.askyesno(
+                            "Це може бути довго",
+                            f"Кількість комп'ютерів {n}, можливих каналів {len(str(n*(n - 1) / 2))}, "
+                            f"тобто до 2^{len(str(n*(n - 1) / 2))} варіантів топології.\n\n"
+                            f"Розрахунок може тривати десятки хвилин, і перервати його "
+                            f"кнопкою не вийде.\n\nПродовжити?"):
+                        return
+            case "optimal":
+                self.start_func, self.logic_path = load_start_function("optimal_algorithm")
+
+
     #  Розрахунок у фоновому потоці
     def compute(self):
         if self.busy:
@@ -633,14 +677,6 @@ class TopologyApp:
                                  "Не задано жодного можливого каналу.")
             return
 
-        if n >= SLOW_N and not messagebox.askyesno(
-                "Це може бути довго",
-                f"Кількість комп'ютерів {n}, можливих каналів {len(edges)}, "
-                f"тобто до 2^{len(edges)} варіантів топології.\n\n"
-                f"Розрахунок може тривати десятки хвилин, і перервати його "
-                f"кнопкою не вийде.\n\nПродовжити?"):
-            return
-
         self.busy = True
         self.run_btn.configure(state="disabled")
         self.progress.start(12)
@@ -654,6 +690,7 @@ class TopologyApp:
         """Виконується в окремому потоці; інтерфейс тут не чіпається."""
         try:
             t0 = time.time()
+            self.change_method()
             adj, rel = self.start_func(n, budget, prob, cost)   # виклик логіки
             elapsed = time.time() - t0
 
@@ -681,6 +718,15 @@ class TopologyApp:
             messagebox.showerror("Помилка у модулі логіки", item[1])
             self.set_status("Розрахунок завершився помилкою")
             return
+
+        # *Логіка нестачі бюджету (зробити пізніше)
+        """if item[0] == "budget_err":
+            self.set_status("Придатної топології в межах бюджету не знайдено")
+            messagebox.showinfo(
+                "Нічого не знайдено",
+                "Логіка не знайшла жодної топології, яка вміщується в бюджет "
+                "і з'єднує всі комп'ютери.\nСпробуйте збільшити бюджет.")
+            return"""
 
         _, res, text, elapsed, data = item
         self.result, self.report_text, self.result_data = res, text, data

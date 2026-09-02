@@ -1,6 +1,5 @@
 import numpy as np
 from collections import deque
-import time
 import math
 
 #Клас Ребер, що зберігає координати ребра між двома вершинами
@@ -13,12 +12,12 @@ class Edge:
 
 #Клас Вершин, що зберігає номер вершини та чи була вона відвідана
 class Vertex:
-    def __init__(self, idx, was_visited):
+    def __init__(self, idx):
         self.idx = idx
         self.was_visited = False
 
 # Головна функція, що містить всі функції
-def brute_forse(m, p, pb, pr):
+def brute_force(m, p, pb, pr):
     max_vertexes = m
     max_price = p
     probability_matrix = pb
@@ -29,7 +28,7 @@ def brute_forse(m, p, pb, pr):
     edges = []
 
     for i in range(0, max_vertexes):
-        vertexes.append(Vertex(i, False))
+        vertexes.append(Vertex(i))
         for j in range(i + 1, max_vertexes):
             if not price_matrix[i][j] == 0.0 or not probability_matrix[i][j] == 0.0:
                 edges.append(Edge(i, j, price_matrix[i][j], probability_matrix[i][j]))
@@ -126,18 +125,10 @@ def brute_forse(m, p, pb, pr):
             result_adj_matrix = matrix.copy()
             result_reliability_matrix = temp_probability_matrix.copy()
 
-    start = time.time()
     generateGraphs(0, 0, 0)
-    end = time.time()
 
-    print("Done")
-    print(f"First Elapsed: {end - start} seconds")
-
-    start = time.time()
     for matrix in queue_adj_matrix:
         processGraph(matrix)
-    end = time.time()
-    print(f"Second Elapsed: {end - start} seconds")
 
     return result_adj_matrix, result_reliability_matrix
 
@@ -150,12 +141,13 @@ def optimal_algorithm(m, p, pb, pr):
     vertexes = []
     edges = []
     for i in range(0, max_vertexes):
-        vertexes.append(Vertex(i, False))
+        vertexes.append(Vertex(i))
         for j in range(i + 1, max_vertexes):
             if not price_matrix[i][j] == 0.0 or not probability_matrix[i][j] == 0.0:
                 edges.append(Edge(i, j, price_matrix[i][j], probability_matrix[i][j]))
 
     def binary_search():
+        result = None
         edges.sort(key=lambda edge: edge.probability)
 
         low = 0
@@ -166,11 +158,11 @@ def optimal_algorithm(m, p, pb, pr):
 
             found, adj_matrix = kruskal(mid_element)
             if found:
-                result_adj_matrix = adj_matrix
-                low += 1
+                result = adj_matrix
+                low = mid + 1
             else:
-                high -= 1
-        return result_adj_matrix
+                high = mid - 1
+        return result
 
     def kruskal(mid_element):
         temp_adj_matrix = np.zeros((max_vertexes, max_vertexes), dtype=int)
@@ -243,5 +235,7 @@ def optimal_algorithm(m, p, pb, pr):
         reliable_matrix[i][j] = reliable_matrix[j][i] = r
 
     result_adj_matrix = binary_search()
+    if result_adj_matrix is None:
+        return None, None
     result_reliable_matrix = calculate_matrix()
     return result_adj_matrix, result_reliable_matrix
